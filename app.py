@@ -174,8 +174,16 @@ class SmartSpendApp:
         self.display_spending_charts(metrics.get('category_spending', {}))
         
         st.write("---")
+        st.subheader("📊 Spending Concentration Insights")
+        self.display_category_insights(metrics)
+        
+        st.write("---")
         st.subheader("📅 Spending Over Time")
         self.display_time_analysis(metrics)
+        
+        st.write("---")
+        st.subheader("🔍 Unusual Transaction Detection")
+        self.display_anomalies(metrics)
         
         st.subheader("💡 AI-Powered Suggestions to Meet Your Goal")
         st.markdown(st.session_state.ai_suggestions)
@@ -312,44 +320,48 @@ class SmartSpendApp:
         ] if not daily_spending.empty else []
 
         # --- ANOMALY DETECTION (HEURISTIC-BASED) ---
-        # Detect unusual transactions using simple, explainable thresholds
-        # No ML required - pure deterministic logic
+        # Detect unusual transactions using simple statistical thresholds
         anomalies = []
         
         if not expenses_df.empty and avg_daily_spending > 0:
-            # Calculate category averages for comparison
-            # Used to detect transactions that are unusually high within their category
-            category_avg = expenses_df.groupby(tags_col)['amount'].mean().to_dict()
+            # Calculate category-wise average spending for comparison
+            # This helps identify transactions that are unusually high for their category
+            category_averages = expenses_df.groupby(tags_col)['amount'].mean()
+            
+            # Threshold 1: 2× average daily spending (detects globally large transactions)
+            # Rationale: A transaction twice the daily average is significantly above normal
+            daily_threshold = 2 * avg_daily_spending
             
             for idx, row in expenses_df.iterrows():
-                amount = row['amount']
-                date = row['date']
-                category = row[tags_col]
+                transaction_amount = row['amount']
+                transaction_category = row[tags_col]
+                transaction_date = row['date']
                 reasons = []
                 
-                # Threshold 1: Transaction > 2× average daily spending
-                # Rationale: A transaction twice the daily average is significantly large
-                # and deserves attention (e.g., daily avg ₹200, transaction ₹400+)
-                if amount > 2 * avg_daily_spending:
+                # Check if transaction exceeds 2× average daily spending
+                if transaction_amount > daily_threshold:
                     reasons.append(f"Amount exceeds 2× avg daily spending (₹{avg_daily_spending:,.2f})")
                 
-                # Threshold 2: Transaction > 1.5× category average
-                # Rationale: Within a category, 1.5× the average indicates an unusually
-                # high spend for that type of expense (e.g., if Food avg is ₹100, ₹150+ flags)
-                cat_avg = category_avg.get(category, 0)
-                if cat_avg > 0 and amount > 1.5 * cat_avg:
-                    reasons.append(f"Amount exceeds 1.5× avg for {category} (₹{cat_avg:,.2f})")
+                # Threshold 2: 1.5× category average (detects category-specific outliers)
+                # Rationale: 1.5× captures transactions that are moderately high for their category
+                # while avoiding false positives from normal variation
+                if transaction_category in category_averages:
+                    category_avg = category_averages[transaction_category]
+                    category_threshold = 1.5 * category_avg
+                    
+                    if transaction_amount > category_threshold:
+                        reasons.append(f"Amount exceeds 1.5× category average (₹{category_avg:,.2f})")
                 
-                # If any threshold is met, flag as potential anomaly
+                # If any threshold was exceeded, flag as potential anomaly
                 if reasons:
                     anomalies.append({
-                        'date': date.strftime('%Y-%m-%d'),
-                        'category': category,
-                        'amount': amount,
-                        'reason': '; '.join(reasons)
+                        'date': transaction_date.strftime('%Y-%m-%d'),
+                        'category': transaction_category,
+                        'amount': transaction_amount,
+                        'reason': ' & '.join(reasons)
                     })
             
-            # Sort anomalies by amount descending to show most significant first
+            # Sort anomalies by amount descending (highest amounts first)
             anomalies.sort(key=lambda x: x['amount'], reverse=True)
 
         metrics = {
@@ -371,6 +383,62 @@ class SmartSpendApp:
         fig = px.pie(df, values='Amount', names='Category', title='Spending by Category', hole=.3, color_discrete_sequence=px.colors.sequential.Aggrnyl)
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
+
+    def display_category_insights(self, metrics):
+        """Display insights about spending concentration across categories."""
+        category_spending = metrics.get('category_spending', {})
+        total_spent = metrics.get('total_spent', 0)
+        
+        # Handle edge case: no spending data
+        if not category_spending or total_spent == 0:
+            st.info("💡 No spending data available for concentration analysis.")
+            return
+        
+        # Get sorted categories by amount (category_spending is already sorted descending)
+        sorted_categories = sorted(category_spending.items(), key=lambda x: x[1], reverse=True)
+        
+        # Compute top category percentage
+        top_category, top_amount = sorted_categories[0]
+        top_percentage = (top_amount / total_spent) * 100
+        
+        # Compute top 3 categories percentage (handle fewer than 3 categories)
+        top_3_categories = sorted_categories[:3]
+        top_3_total = sum(amount for _, amount in top_3_categories)
+        top_3_percentage = (top_3_total / total_spent) * 100
+        
+        # Display metrics using columns for clean layout
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric(
+                label="Top Category Dominance",
+                value=f"{top_percentage:.1f}%",
+                delta=f"{top_category}"
+            )
+        
+        with col2:
+            top_n = len(top_3_categories)
+            st.metric(
+                label=f"Top {top_n} Categories Combined",
+                value=f"{top_3_percentage:.1f}%",
+                delta=f"{top_n} of {len(sorted_categories)} categories"
+            )
+        
+        # Display text insights
+        st.info(f"💡 **Top category '{top_category}'** accounts for **{top_percentage:.1f}%** of total spending.")
+        
+        # Only show top 3 insight if there are at least 2 categories
+        if len(sorted_categories) >= 2:
+            top_3_names = ', '.join([cat for cat, _ in top_3_categories])
+            st.info(f"💡 **Top {len(top_3_categories)} categories** ({top_3_names}) account for **{top_3_percentage:.1f}%** of total spending.")
+        
+        # Determine and display concentration level with qualitative interpretation
+        if top_percentage > 50:
+            st.warning("⚠️ **High category concentration** - Consider diversifying spending or review if this category dominance is intentional.")
+        elif top_percentage >= 30:
+            st.info("📊 **Moderate category concentration** - Spending is reasonably balanced with some focus areas.")
+        else:
+            st.success("✓ **Well-distributed spending** - Your expenses are spread across multiple categories.")
 
     def display_time_analysis(self, metrics):
         """Display time-based spending analysis with line chart and key metrics."""
@@ -415,6 +483,36 @@ class SmartSpendApp:
                     f"₹{highest_day['amount']:,.2f}",
                     delta=highest_day['date']
                 )
+
+    def display_anomalies(self, metrics):
+        """Display potential anomalies detected using heuristic thresholds."""
+        anomalies = metrics.get('anomalies', [])
+        
+        if not anomalies:
+            st.success("✓ No unusual transactions detected")
+            st.caption("All transactions fall within expected spending patterns.")
+            return
+        
+        # Display count and informational message
+        st.warning(f"⚠️ {len(anomalies)} potential anomal{'y' if len(anomalies) == 1 else 'ies'} detected")
+        st.caption("These transactions exceed typical spending patterns. Review them to ensure they're expected.")
+        
+        # Convert anomalies to DataFrame for table display
+        anomaly_df = pd.DataFrame(anomalies)
+        
+        # Format the amount column for display
+        anomaly_df['Amount (₹)'] = anomaly_df['amount'].apply(lambda x: f"₹{x:,.2f}")
+        
+        # Rename columns for better presentation
+        display_df = anomaly_df[['date', 'category', 'Amount (₹)', 'reason']].copy()
+        display_df.columns = ['Date', 'Category', 'Amount', 'Reason']
+        
+        # Display as a table
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
 
     def show_chatbot(self):
         if not self.setup_groq():

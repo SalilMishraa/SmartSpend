@@ -173,6 +173,10 @@ class SmartSpendApp:
         st.subheader("Spending Breakdown")
         self.display_spending_charts(metrics.get('category_spending', {}))
         
+        st.write("---")
+        st.subheader("📅 Spending Over Time")
+        self.display_time_analysis(metrics)
+        
         st.subheader("💡 AI-Powered Suggestions to Meet Your Goal")
         st.markdown(st.session_state.ai_suggestions)
 
@@ -282,7 +286,81 @@ class SmartSpendApp:
         total_spent = expenses_df['amount'].sum()
         category_spending = expenses_df.groupby(tags_col)['amount'].sum().sort_values(ascending=False).to_dict()
 
-        metrics = {'total_spent': total_spent, 'category_spending': category_spending}
+        # --- TIME-BASED SPENDING ANALYSIS ---
+        # Compute daily total spending by grouping expenses by date
+        daily_spending = expenses_df.groupby('date')['amount'].sum().sort_index()
+        
+        # Compute weekly total spending (calendar week with Monday as start)
+        # Set the week to start on Monday using freq='W-MON'
+        weekly_spending = expenses_df.set_index('date')['amount'].resample('W-MON', label='left').sum()
+        
+        # Calculate average daily spending across all transaction days
+        avg_daily_spending = daily_spending.mean() if not daily_spending.empty else 0
+        
+        # Find top 3 highest-spending days (date + amount)
+        # Sort by amount descending and take top 3
+        top_spending_days = daily_spending.sort_values(ascending=False).head(3)
+        top_3_days = [
+            {'date': date.strftime('%Y-%m-%d'), 'amount': amount}
+            for date, amount in top_spending_days.items()
+        ] if not top_spending_days.empty else []
+        
+        # Convert daily_spending Series to list of dicts for storage
+        daily_spending_data = [
+            {'date': date.strftime('%Y-%m-%d'), 'amount': amount}
+            for date, amount in daily_spending.items()
+        ] if not daily_spending.empty else []
+
+        # --- ANOMALY DETECTION (HEURISTIC-BASED) ---
+        # Detect unusual transactions using simple, explainable thresholds
+        # No ML required - pure deterministic logic
+        anomalies = []
+        
+        if not expenses_df.empty and avg_daily_spending > 0:
+            # Calculate category averages for comparison
+            # Used to detect transactions that are unusually high within their category
+            category_avg = expenses_df.groupby(tags_col)['amount'].mean().to_dict()
+            
+            for idx, row in expenses_df.iterrows():
+                amount = row['amount']
+                date = row['date']
+                category = row[tags_col]
+                reasons = []
+                
+                # Threshold 1: Transaction > 2× average daily spending
+                # Rationale: A transaction twice the daily average is significantly large
+                # and deserves attention (e.g., daily avg ₹200, transaction ₹400+)
+                if amount > 2 * avg_daily_spending:
+                    reasons.append(f"Amount exceeds 2× avg daily spending (₹{avg_daily_spending:,.2f})")
+                
+                # Threshold 2: Transaction > 1.5× category average
+                # Rationale: Within a category, 1.5× the average indicates an unusually
+                # high spend for that type of expense (e.g., if Food avg is ₹100, ₹150+ flags)
+                cat_avg = category_avg.get(category, 0)
+                if cat_avg > 0 and amount > 1.5 * cat_avg:
+                    reasons.append(f"Amount exceeds 1.5× avg for {category} (₹{cat_avg:,.2f})")
+                
+                # If any threshold is met, flag as potential anomaly
+                if reasons:
+                    anomalies.append({
+                        'date': date.strftime('%Y-%m-%d'),
+                        'category': category,
+                        'amount': amount,
+                        'reason': '; '.join(reasons)
+                    })
+            
+            # Sort anomalies by amount descending to show most significant first
+            anomalies.sort(key=lambda x: x['amount'], reverse=True)
+
+        metrics = {
+            'total_spent': total_spent,
+            'category_spending': category_spending,
+            'daily_spending': daily_spending_data,
+            'weekly_spending': weekly_spending.to_dict() if not weekly_spending.empty else {},
+            'avg_daily_spending': avg_daily_spending,
+            'top_3_days': top_3_days,
+            'anomalies': anomalies
+        }
         return metrics, dropped_rows
 
     def display_spending_charts(self, category_spending):
@@ -293,6 +371,50 @@ class SmartSpendApp:
         fig = px.pie(df, values='Amount', names='Category', title='Spending by Category', hole=.3, color_discrete_sequence=px.colors.sequential.Aggrnyl)
         fig.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig, use_container_width=True)
+
+    def display_time_analysis(self, metrics):
+        """Display time-based spending analysis with line chart and key metrics."""
+        daily_spending = metrics.get('daily_spending', [])
+        
+        if not daily_spending:
+            st.write("No daily spending data to display.")
+            return
+        
+        # Convert daily spending data to DataFrame for plotting
+        # Data is already sorted by date from process_transactions()
+        daily_df = pd.DataFrame(daily_spending)
+        daily_df['date'] = pd.to_datetime(daily_df['date'])
+        
+        # Create line chart showing daily spending over time
+        fig = px.line(
+            daily_df,
+            x='date',
+            y='amount',
+            title='Daily Spending Trend',
+            labels={'date': 'Date', 'amount': 'Amount Spent (₹)'},
+            markers=True
+        )
+        fig.update_traces(line_color='#56ab2f', marker=dict(size=8))
+        fig.update_layout(hovermode='x unified')
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Display key time-based metrics below the chart
+        avg_daily = metrics.get('avg_daily_spending', 0)
+        top_days = metrics.get('top_3_days', [])
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Average Daily Spending", f"₹{avg_daily:,.2f}")
+        
+        with col2:
+            if top_days:
+                highest_day = top_days[0]
+                st.metric(
+                    "Highest Spending Day",
+                    f"₹{highest_day['amount']:,.2f}",
+                    delta=highest_day['date']
+                )
 
     def show_chatbot(self):
         if not self.setup_groq():

@@ -1,0 +1,510 @@
+================================================================================
+                          SMARTSPEND PROJECT DOCUMENTATION
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+SmartSpend is an AI-powered budgeting application designed specifically for 
+college students in India. It analyzes UPI transaction statements and provides 
+intelligent financial insights, spending breakdowns, and personalized budget 
+recommendations using AI.
+
+Target Users: College students managing personal finances via UPI payments
+Primary Goal: Help students understand spending patterns and meet budget goals
+
+
+KEY FEATURES
+================================================================================
+
+1. UPI STATEMENT ANALYSIS
+   - Uploads and parses XLSX files containing UPI transaction history
+   - Auto-detects relevant sheet (searches for "payment" or "history" keywords)
+   - Robust parsing handles multiple date formats, currency symbols, and Excel 
+     serial dates
+   - Extracts expenses (negative amounts/debits) for budget analysis
+   - Categorizes transactions based on tags/categories in statement
+   - Zero data loss: advanced parsing prevents row drops from format issues
+
+2. SPENDING GOAL MANAGEMENT
+   - User sets monthly spending limit (default: ₹5000)
+   - Real-time tracking of spending vs. goal
+   - Calculates remaining budget
+   - Visual budget indicators with positive/negative deltas
+
+3. INTERACTIVE DASHBOARD
+   - Three-column metric display:
+     * Total Spent
+     * Spending Limit (goal)
+     * Remaining Budget with delta indicator
+   - Info banner shows dropped rows (if any) for transparency
+   - Clean, modern UI with gradient header styling
+
+4. VISUAL SPENDING BREAKDOWN
+   - Interactive Plotly pie chart showing spending by category
+   - Percentage and label display inside chart segments
+   - Sorted by amount (highest spending categories first)
+   - Color-coded with Aggrnyl sequential palette
+   - Responsive, full-width chart rendering
+
+5. AI-POWERED BUDGET SUGGESTIONS
+   - Analyzes spending patterns using Groq's LLaMA 3.1 8B model
+   - Generates 3-4 concise, actionable tips tailored to student lifestyle
+   - Context-aware: considers spending goal, total spent, and category breakdown
+   - Cached to prevent redundant API calls (performance optimization)
+   - Markdown-formatted output for readability
+
+6. CONTEXT-AWARE AI CHATBOT
+   - Interactive Q&A about personal spending data
+   - Maintains conversation context using last 6 message turns
+   - Precise financial calculations with spending category awareness
+   - Concise, student-friendly responses
+   - Real-time thinking indicator during API calls
+   - Full chat history preserved per session
+
+7. SESSION MANAGEMENT
+   - Stateful navigation between Upload and Dashboard pages
+   - Persistent data across page changes within session
+   - Cache clearing when returning to upload (fresh start)
+   - Session state stores: metrics, chat history, AI suggestions, client
+
+
+TECHNICAL STACK
+================================================================================
+
+Programming Language: Python 3.x
+Web Framework: Streamlit (interactive web apps)
+AI Provider: Groq API (fast LLM inference)
+AI Model: llama-3.1-8b-instant
+
+Key Libraries:
+- streamlit: Web app framework and UI components
+- pandas: Data manipulation and Excel parsing
+- plotly: Interactive charting and visualization
+- groq: Groq AI API client for LLM calls
+- openpyxl: Excel file reading support (XLSX)
+
+Data Structures:
+- Session state dictionary for app state persistence
+- Pandas DataFrame for transaction processing
+- Python dictionaries for spending metrics
+- List of dictionaries for chat history (message cache)
+
+
+FILE STRUCTURE
+================================================================================
+
+app.py
+├─ Main application entry point
+├─ SmartSpendApp class orchestrates entire app flow
+├─ generate_ai_suggestions(): Cached function for budget tips
+├─ get_chatbot_response(): Context-aware chatbot with message history
+└─ Core methods:
+   ├─ setup_page_config(): UI configuration and custom CSS
+   ├─ setup_session_state(): Initialize default session variables
+   ├─ setup_groq(): Configure Groq client with API key
+   ├─ run_app(): Main routing logic (upload vs. dashboard)
+   ├─ show_upload_page(): File upload and goal input UI
+   ├─ show_dashboard_page(): Metrics, charts, AI, and chatbot
+   ├─ process_transactions(): Robust transaction parsing engine
+   ├─ display_spending_charts(): Plotly pie chart rendering
+   └─ show_chatbot(): Chat interface with message history
+
+check_models.py
+├─ Utility script to list available Groq models
+├─ Reads GROQ_API_KEY from environment variable
+└─ Useful for verifying API access and model availability
+
+requirements.txt
+├─ Python dependencies for pip installation
+└─ Lists: streamlit, pandas, matplotlib, groq, openpyxl, plotly
+
+.streamlit/secrets.toml
+├─ Streamlit secrets configuration
+├─ Stores GROQ_API_KEY for secure API access
+└─ Not committed to version control (contains sensitive data)
+
+venv/
+└─ Python virtual environment (local dependencies, ignored)
+
+
+TRANSACTION PROCESSING ENGINE
+================================================================================
+
+The process_transactions() method is the core parsing engine with robust 
+error handling:
+
+1. COLUMN DETECTION (Case-insensitive)
+   - Amount: Searches for any column containing "amount"
+   - Date: Searches for any column containing "date"
+   - Category: Searches for "tags", "category", "narration", "note", 
+     "description", or "details" (in priority order)
+
+2. AMOUNT PARSING (Multi-format support)
+   - Strips currency symbols (₹, $, etc.)
+   - Normalizes unicode minus (U+2212) to hyphen
+   - Handles parentheses for negatives: (100) becomes -100
+   - Removes commas and non-numeric characters
+   - Detects Dr/Cr or Debit/Credit columns for sign correction
+   - Applies correct sign to distinguish expenses from income
+   - Fallback: Returns NaN for unparseable values
+
+3. DATE PARSING (Universal format support)
+   - Detects Excel serial dates (numeric format)
+   - Converts serial dates using origin='1899-12-30'
+   - Parses string dates with dayfirst=True (DD/MM/YYYY priority)
+   - Fallback: Tries dayfirst=False if >50% failures
+   - Supports multiple formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, etc.
+   - Infers format automatically using pandas inference
+
+4. EXPENSE EXTRACTION
+   - Filters for negative amounts (outflows/debits)
+   - Converts to absolute values for display
+   - Ignores positive amounts (income/credits)
+
+5. CATEGORY ASSIGNMENT
+   - Extracts last token from tags/category field if available
+   - Fallback to "Uncategorized" if column missing or empty
+   - Preserves original text if split produces empty result
+
+6. METRICS CALCULATION
+   - total_spent: Sum of all expense amounts
+   - category_spending: Dictionary of category->amount, sorted descending
+
+7. DATA QUALITY
+   - Drops rows only if BOTH date AND amount are invalid
+   - Tracks dropped_rows count for transparency
+   - Reports dropped count to user in dashboard
+
+
+AI INTEGRATION DETAILS
+================================================================================
+
+MODEL: llama-3.1-8b-instant (Groq)
+Reasoning: Fast inference, good quality for financial advice, cost-effective
+
+1. BUDGET SUGGESTIONS (Cached)
+   Function: generate_ai_suggestions()
+   Caching: @st.cache_data - prevents redundant API calls for same data
+   Temperature: 0.7 (balanced creativity and consistency)
+   
+   System Prompt:
+   "You are an excellent financial assistant. You are talking to a college 
+   student in India. Answer only what is required, be concise, and be precise 
+   with calculations."
+   
+   User Prompt Structure:
+   - Spending Goal: ₹X
+   - Total Spent: ₹Y
+   - Spending by Category: Bulleted list with amounts
+   
+   Output: 3-4 markdown-formatted tips
+
+2. CHATBOT (Context-aware, Uncached)
+   Function: get_chatbot_response()
+   Caching: None - must be real-time for conversation flow
+   Temperature: 0.4 (more focused, precise calculations)
+   
+   System Prompt:
+   "You are SmartSpend, an excellent financial assistant. You are talking to 
+   a college student. Answer only what is required, be concise, and be precise 
+   with calculations."
+   
+   Message Structure (sent to API):
+   1. System message (role definition)
+   2. Context message (spending categories as user message)
+   3. Last 6 turns from chat history (for context)
+   4. Current user question
+   
+   Context Window: Last 6 messages (3 user + 3 assistant turns)
+   Reasoning: Balances context vs. token efficiency
+   
+   Chat History Storage:
+   - Format: List of {"role": "user"|"assistant", "content": "text"}
+   - Persisted in st.session_state.chat_history
+   - Cleared when returning to upload page
+
+
+SETUP INSTRUCTIONS
+================================================================================
+
+1. PREREQUISITES
+   - Python 3.8 or higher
+   - pip (Python package manager)
+   - Groq API key (free at console.groq.com)
+
+2. INSTALLATION
+   Step 1: Clone or download project to local directory
+   Step 2: Create virtual environment (recommended)
+           Command: python -m venv venv
+   Step 3: Activate virtual environment
+           Windows: venv\Scripts\activate
+           Linux/Mac: source venv/bin/activate
+   Step 4: Install dependencies
+           Command: pip install -r requirements.txt
+
+3. CONFIGURATION
+   Step 1: Create .streamlit folder in project root (if not exists)
+   Step 2: Create secrets.toml file inside .streamlit/
+   Step 3: Add your Groq API key:
+           GROQ_API_KEY = "your_actual_api_key_here"
+   Step 4: Save file
+   
+   Security Note: Never commit secrets.toml to version control
+
+4. RUNNING THE APP
+   Command: streamlit run app.py
+   Result: Browser opens automatically at http://localhost:8501
+   
+   Alternative: If browser doesn't open, manually navigate to displayed URL
+
+5. TESTING GROQ CONNECTION (Optional)
+   Set environment variable: set GROQ_API_KEY=your_key (Windows)
+                            export GROQ_API_KEY=your_key (Linux/Mac)
+   Run: python check_models.py
+   Output: Lists available Groq models if connection successful
+
+
+USAGE GUIDE
+================================================================================
+
+STEP 1: UPLOAD STATEMENT
+1. Launch app (streamlit run app.py)
+2. Upload XLSX file containing UPI statement
+   - File must contain columns: Amount, Date, and Tags/Category
+   - Multiple sheets supported (auto-detects payment history sheet)
+3. Set spending goal (default ₹5000, adjustable)
+4. Click "Analyze Statement" button
+
+STEP 2: VIEW DASHBOARD
+1. Review three-column metrics:
+   - Total Spent: Sum of all expenses
+   - Spending Limit: Your budget goal
+   - Remaining Budget: How much left (with delta indicator)
+2. Check info banner for any dropped rows (should be 0 with robust parsing)
+3. Examine pie chart for category-wise spending breakdown
+
+STEP 3: READ AI SUGGESTIONS
+1. Scroll to "AI-Powered Suggestions" section
+2. Read 3-4 personalized tips to meet your budget goal
+3. Tips are tailored to your spending categories and goal
+
+STEP 4: CHAT WITH ASSISTANT
+1. Scroll to chatbot section at bottom
+2. Type questions about your spending
+   Examples:
+   - "Why is my food spending so high?"
+   - "How can I reduce entertainment costs?"
+   - "What percentage of my budget is on transport?"
+   - "Calculate my daily average spending"
+3. Chat maintains context across conversation
+4. Precise calculations based on your actual data
+
+STEP 5: START OVER (Optional)
+1. Click "Go Back to Upload" in sidebar
+2. Upload new statement or adjust goal
+3. Previous data and chat history cleared
+
+
+STATEMENT FORMAT REQUIREMENTS
+================================================================================
+
+Required Columns (case-insensitive):
+1. Amount/Amt: Transaction amount
+   - Can include currency symbols (₹, $)
+   - Can use commas as thousands separator
+   - Negative values or "(100)" format for expenses
+   - Dr/Cr or Debit/Credit indicators supported
+
+2. Date: Transaction date
+   - Supports Excel serial dates (numeric)
+   - String formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, etc.
+   - Auto-inferred format
+
+3. Tags/Category/Narration/Description: Transaction category
+   - Used to group spending by type
+   - Last word extracted if multi-word
+   - Fallback to "Uncategorized" if missing
+
+Recommended Format:
+- XLSX file (Excel workbook)
+- First row as header
+- No merged cells in data area
+- Date and Amount columns should not be empty
+
+Example Compatible Statements:
+- Paytm UPI Statement
+- Google Pay Transaction History
+- PhonePe Statement
+- Bank UPI Transaction Report
+
+
+CONFIGURATION OPTIONS
+================================================================================
+
+1. Spending Limit
+   Location: Upload page, number input field
+   Default: ₹5000
+   Range: Minimum 0, no maximum
+   Increment: ₹100 steps
+   Purpose: Sets monthly budget goal for comparison
+
+2. Chat Context Window
+   Location: app.py, get_chatbot_response() function
+   Default: Last 6 messages (3 user + 3 assistant turns)
+   Adjustment: Change "trimmed = chat_history[-6:]" to desired number
+   Reasoning: Balances context vs. API token cost
+
+3. AI Model
+   Location: Both generate_ai_suggestions() and get_chatbot_response()
+   Current: llama-3.1-8b-instant
+   Alternatives: llama-3.1-70b-versatile, mixtral-8x7b-32768, etc.
+   Note: Check available models using check_models.py
+
+4. Temperature Settings
+   Budget Suggestions: 0.7 (more creative advice)
+   Chatbot: 0.4 (more factual, precise calculations)
+   Range: 0.0 (deterministic) to 2.0 (very creative)
+
+5. Cache Behavior
+   Suggestions: Cached (@st.cache_data) - same data = same output
+   Chatbot: Not cached - enables context-aware conversation
+   Clear: Automatic when returning to upload page
+
+
+TECHNICAL IMPLEMENTATION NOTES
+================================================================================
+
+1. SESSION STATE MANAGEMENT
+   - All state stored in st.session_state dictionary
+   - Persists across reruns within same browser session
+   - Keys: page, spending_metrics, spending_limit, chat_history, 
+     ai_suggestions, dropped_rows, groq_client
+
+2. CACHING STRATEGY
+   - AI suggestions cached to avoid redundant API calls
+   - Same input data = cached output (no API hit)
+   - Chat NOT cached to maintain conversation flow
+   - Manual cache clear on navigation to upload page
+
+3. ERROR HANDLING
+   - Graceful degradation if API unavailable
+   - User-friendly error messages for file parsing issues
+   - Transparent reporting of dropped rows
+   - Try-except blocks around API calls
+
+4. PERFORMANCE OPTIMIZATIONS
+   - Streamlit caching for expensive operations
+   - Single-pass DataFrame operations where possible
+   - Minimal API calls (caching + context window trimming)
+   - Lightweight prompts to reduce token count
+
+5. SECURITY CONSIDERATIONS
+   - API keys stored in secrets.toml (not in code)
+   - No user data persisted to disk
+   - Session data cleared on browser refresh
+   - Secrets file excluded from version control
+
+
+API USAGE & COSTS
+================================================================================
+
+Provider: Groq (console.groq.com)
+Pricing Model: Free tier available, paid tiers for higher volume
+
+Estimated API Calls per Session:
+- 1 call for budget suggestions (cached, single call per dataset)
+- N calls for chatbot (N = number of user messages)
+
+Token Usage per Call:
+- Budget suggestions: ~200-300 tokens (prompt + response)
+- Chatbot: ~150-250 tokens per message (includes 6-message context)
+
+Cost Optimization Features:
+- Caching of suggestions (major cost saver)
+- Limited chat context window (6 messages vs. full history)
+- Concise system prompts
+- Temperature tuning for efficiency
+
+
+LIMITATIONS & KNOWN ISSUES
+================================================================================
+
+1. Statement Format
+   - Requires specific columns (Amount, Date, Tags/Category)
+   - Single currency per statement (no multi-currency support)
+   - Category extraction limited to last word of tags field
+
+2. AI Responses
+   - Quality depends on Groq API availability
+   - Rate limits may apply on free tier
+   - Context window limited to last 6 messages
+
+3. Data Scope
+   - Single statement analysis (no multi-period comparison)
+   - No income tracking (focuses on expenses only)
+   - No savings goals or projections
+
+4. Platform
+   - Requires internet connection for AI features
+   - Browser-based (no mobile app)
+   - Session data not persisted across browser restarts
+
+
+FUTURE ENHANCEMENT IDEAS
+================================================================================
+
+- Multi-month comparison and trend analysis
+- Income vs. expense tracking
+- Savings goal setting and progress tracking
+- Export reports as PDF/CSV
+- Recurring expense detection
+- Budget alerts and notifications
+- Multiple user profiles
+- Data encryption for privacy
+- Mobile-responsive design improvements
+- Offline mode for basic features
+
+
+TROUBLESHOOTING
+================================================================================
+
+Issue: "AI suggestions are unavailable"
+Solution: Check GROQ_API_KEY in .streamlit/secrets.toml is valid
+
+Issue: "File is missing a required column"
+Solution: Ensure XLSX has Amount, Date, and Tags/Category columns
+
+Issue: Many rows dropped
+Solution: Verify Date and Amount columns don't have empty cells
+
+Issue: Chatbot gives irrelevant answers
+Solution: Check that spending data loaded correctly on dashboard
+
+Issue: App won't start
+Solution: Verify all dependencies installed (pip install -r requirements.txt)
+
+Issue: Groq API rate limit error
+Solution: Wait a few minutes or upgrade to paid tier
+
+Issue: Categories show as "Uncategorized"
+Solution: Ensure Tags/Category column exists and has data
+
+
+CREDITS & LICENSE
+================================================================================
+
+Project: SmartSpend - AI-Powered Budget Assistant for Students
+Technology: Streamlit + Groq LLaMA 3.1
+Target Market: College students in India using UPI payments
+
+Dependencies:
+- Streamlit: Open-source app framework
+- Groq: Fast LLM inference platform
+- Plotly: Open-source charting library
+- Pandas: Data manipulation library
+
+For questions or contributions, refer to project repository.
+
+================================================================================
+                            END OF DOCUMENTATION
+================================================================================

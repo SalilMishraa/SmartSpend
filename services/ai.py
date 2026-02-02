@@ -25,7 +25,8 @@ def generate_ai_suggestions(metrics, limit):
     prompt = (
         "You are a friendly financial advisor for a college student in India. "
         "Analyze the following spending data and provide 3-4 concise, actionable tips to help them meet their goal. "
-        "Use markdown for formatting.\n\n"
+        "Use markdown for formatting. (DO NOT USE TITLES OR HEADING, Just Bold text wherever a heading is required) "
+        "Use a newline symbol after a bold heading \n\n"
         f"**Spending Goal:** ₹{limit:,.2f}\n"
         f"**Total Spent:** ₹{metrics['total_spent']:,.2f}\n"
         f"**Budget Status:** {budget_status}\n"

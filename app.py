@@ -16,8 +16,7 @@ class SmartSpendApp:
         self.run_app()
 
     def setup_page_config(self):
-        st.set_page_config(page_title="SmartSpend", page_icon="💸", layout="wide")
-        st.markdown("<style>.main-header{font-size:3rem;background:linear-gradient(90deg,#56ab2f 0%,#a8e6cf 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;font-weight:bold;margin-bottom:2rem}</style>", unsafe_allow_html=True)
+        st.set_page_config(page_title="SmartSpend", layout="wide")
 
     def setup_session_state(self):
         defaults = {
@@ -43,8 +42,8 @@ class SmartSpendApp:
             return False
 
     def run_app(self):
-        st.markdown('<h1 class="main-header">💸 SmartSpend</h1>', unsafe_allow_html=True)
-        st.markdown("A personalized budgeting tool for college students.")
+        st.markdown('<h1 class="main-header" style="text-align: center;"> SmartSpend</h1>', unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center;'>A personalized budgeting tool for college students.</p>", unsafe_allow_html=True)
         st.write("---")
         if st.session_state.page == 'upload':
             self.show_upload_page()
@@ -97,18 +96,17 @@ class SmartSpendApp:
                     st.error(f"Error processing file: {e}.")
 
     def show_dashboard_page(self):
-        st.sidebar.header("🧭 Navigation")
-        if st.sidebar.button("Go Back to Upload"):
-            st.session_state.page = 'upload'
-            st.cache_data.clear() # Clear cache when starting over
-            st.rerun()
+        st.sidebar.subheader("Navigation")
+        st.sidebar.caption("Return to the upload screen to analyze a new statement.")
 
-        st.subheader("Your Personalized Dashboard")
+        if st.sidebar.button("← Back to Upload"):
+            st.session_state.page = "upload"
+            st.cache_data.clear()
+            st.rerun()
         
         if st.session_state.dropped_rows > 0:
             st.info(f"💡 Note: **{st.session_state.dropped_rows} rows** with invalid date or amount formats were ignored in this analysis.")
 
-        st.write("---")
         metrics = st.session_state.spending_metrics
         limit = st.session_state.spending_limit
         col1, col2, col3 = st.columns(3)
@@ -133,6 +131,7 @@ class SmartSpendApp:
         st.subheader("🔍 Unusual Transaction Detection")
         self.display_anomalies(metrics)
         
+        st.write("---")
         st.subheader("💡 AI-Powered Suggestions to Meet Your Goal")
         st.markdown(st.session_state.ai_suggestions)
 
@@ -279,12 +278,11 @@ class SmartSpendApp:
         anomaly_df['Amount'] = anomaly_df['amount'].apply(
             lambda x: f"₹{x:,.2f}"
         )
-        anomaly_df['Type'] = anomaly_df['type'].str.capitalize()
         anomaly_df['Reason'] = anomaly_df['reason']
 
         # Select & order columns for display
         display_df = anomaly_df[
-            ['Type', 'Date', 'Category', 'Amount', 'Reason']
+            ['Date', 'Category', 'Amount', 'Reason']
         ].copy()
 
         # Render table

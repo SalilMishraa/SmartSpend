@@ -105,14 +105,12 @@ def process_transactions(df):
             df[date_col],
             errors='coerce',
             dayfirst=True,
-            infer_datetime_format=True
         )
         if df['date'].isna().mean() > 0.5:
             df['date'] = pd.to_datetime(
                 df[date_col],
                 errors='coerce',
                 dayfirst=False,
-                infer_datetime_format=True
             )
 
     # --- Drop rows only if BOTH amount and date are invalid ---

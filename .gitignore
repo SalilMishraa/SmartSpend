@@ -1,4 +1,5 @@
 .streamlit/
+.env
 
 # Python
 __pycache__/

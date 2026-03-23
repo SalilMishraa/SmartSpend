@@ -33,47 +33,45 @@ function Dashboard() {
 
   return (
     <div className="dashboard">
-      <h1 className="title">SmartSpend</h1>
-      <p className="subtitle">Analyze your Paytm spending data</p>
+      <div className="navbar">
+        <div className="logo">SmartSpend</div>
+      </div>
 
-      <UploadBox onAnalyze={handleAnalyze} />
+      <div className="content">
+        <UploadBox onAnalyze={handleAnalyze} />
 
-      {loading && (
-        <div style={{ marginTop: "20px" }}>
-          <strong>Analyzing your transactions...</strong>
-        </div>
-      )}
-
-      {error && (
-        <div style={{ marginTop: "20px", color: "red" }}>
-          Error: {error}
-        </div>
-      )}
-
-      {data && (
-        <>
-          {/* Metrics */}
-          <MetricsGrid metrics={data.metrics} />
-
-          {/* Charts */}
-          <SpendingCharts metrics={data.metrics} />
-
-          {/* Anomalies */}
-          <div style={{ marginTop: "40px", width: "100%", maxWidth: "1000px" }}>
-            <AnomalyTable anomalies={data.metrics.anomalies} />
+        {loading && (
+          <div style={{ marginTop: "20px" }}>
+            <strong>Analyzing your transactions...</strong>
           </div>
+        )}
 
-          {/* AI Insights */}
-          <div style={{ marginTop: "20px", width: "100%", maxWidth: "1000px" }}>
-            <InsightsBox text={data.ai_suggestions} />
+        {error && (
+          <div style={{ marginTop: "20px", color: "red" }}>
+            Error: {error}
           </div>
+        )}
 
-          {/* Chatbot */}
-          <div style={{ marginTop: "30px", width: "100%", maxWidth: "1000px" }}>
-            <Chatbot metrics={data.metrics} />
-          </div>
-        </>
-      )}
+        {data && (
+          <>
+            <MetricsGrid metrics={data.metrics} />
+
+            <SpendingCharts metrics={data.metrics} />
+
+            <div style={{ marginTop: "40px", width: "100%", maxWidth: "1000px" }}>
+              <AnomalyTable anomalies={data.metrics.anomalies} />
+            </div>
+
+            <div style={{ marginTop: "20px", width: "100%", maxWidth: "1000px" }}>
+              <InsightsBox text={data.ai_suggestions} />
+            </div>
+
+            <div style={{ marginTop: "30px", width: "100%", maxWidth: "1000px" }}>
+              <Chatbot metrics={data.metrics} />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

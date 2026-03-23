@@ -53,11 +53,16 @@ function UploadBox({ onAnalyze }) {
     <div className="card">
       <h2>Upload Paytm File</h2>
 
-      <input
-        type="file"
-        accept=".csv,.xlsx"
-        onChange={(e) => setFile(e.target.files[0])}
-      />
+      <label className="file-upload">
+        <input
+          type="file"
+          accept=".csv,.xlsx"
+          onChange={(e) => setFile(e.target.files[0])}
+        />
+        <span>
+          {file ? file.name : "Choose CSV or Excel file"}
+        </span>
+      </label>
 
       <input
         type="number"

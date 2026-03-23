@@ -1,0 +1,9 @@
+# Activate venv
+venv\Scripts\activate
+
+# Start FastAPI backend
+uvicorn backend.app.main:app --reload
+
+# Start React frontend
+cd frontend
+npm run dev

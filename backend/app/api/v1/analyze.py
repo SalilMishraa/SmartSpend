@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from ...schemas.analysis import AnalyzeRequest, AnalyzeResponse
 
 from services.parser import process_transactions
@@ -13,11 +13,11 @@ router = APIRouter()
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
-def analyze(request: AnalyzeRequest):
+def analyze(request_data: AnalyzeRequest, request: Request):
 
     try:
         # Convert CSV string to DataFrame
-        df = pd.read_csv(io.StringIO(request.raw_data))
+        df = pd.read_csv(io.StringIO(request_data.raw_data))
 
         # Parse transactions
         expenses_df, dropped_rows = process_transactions(df)
@@ -32,14 +32,31 @@ def analyze(request: AnalyzeRequest):
             expenses_df
         )
 
+        # Remove internal-only dataframe before serialization
+        metrics.pop("daily_spend_df", None)
+
+        # Get Groq client from app state
+        groq_client = request.app.state.groq_client
+
         # Generate AI suggestions
         ai_suggestions = generate_ai_suggestions(
             metrics,
-            request.spending_limit
+            request_data.spending_limit,
+            groq_client
         )
 
-        # Remove internal-only data
-        metrics.pop("daily_spend_df", None)
+        # Convert datetime objects to strings
+        for item in metrics.get("daily_spending", []):
+            if hasattr(item["date"], "strftime"):
+                item["date"] = item["date"].strftime("%Y-%m-%d")
+
+        for item in metrics.get("top_3_days", []):
+            if hasattr(item["date"], "strftime"):
+                item["date"] = item["date"].strftime("%Y-%m-%d")
+
+        for item in metrics.get("anomalies", []):
+            if hasattr(item["date"], "strftime"):
+                item["date"] = item["date"].strftime("%Y-%m-%d")
 
         return {
             "metrics": metrics,
@@ -50,5 +67,5 @@ def analyze(request: AnalyzeRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
